@@ -1,0 +1,47 @@
+{
+  "name": "@cubiczan/agent-governance",
+  "version": "0.1.0",
+  "description": "Governance and audit layer for AI agents that move capital: canonical risk policy engine, CHP decision gate with HITL, and a signed append-only audit ledger.",
+  "license": "UNLICENSED",
+  "author": "Shyam Desigan (Cubiczan) <sam@cubiczan.com>",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "ai-agents",
+    "governance",
+    "risk-policy",
+    "audit-ledger",
+    "hitl",
+    "compliance"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
