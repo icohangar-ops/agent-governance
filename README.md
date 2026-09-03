@@ -14,6 +14,8 @@ an auditor, a counterparty, or yourself exactly what the agent did and why.
 - **Restart- and multi-process-safe.** Daily caps persist across restarts;
   ledger appends are lockfile-serialized across processes.
 
+UiPath handoffs can be normalized into governed action envelopes before a capital-moving decision is allowed through the gate.
+
 This is a commercial, proprietary package. See [LICENSE.md](./LICENSE.md).
 Contact sam@cubiczan.com for licensing.
 
