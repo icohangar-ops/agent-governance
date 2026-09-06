@@ -105,6 +105,12 @@ describe("gate -> signed ledger integration", () => {
       "LedgerLockError",
       "DEFAULT_AUDIT_LEDGER_KEY",
       "AUDIT_LEDGER_KEY_ENV",
+      "FinanceAnalysisGate",
+      "defaultFinanceAnalysisPolicy",
+      "syntheticXeroPnlExport",
+      "syntheticXeroCommentaryDraft",
+      "hashSourceReport",
+      "isWriteTool",
     ]) {
       assert.ok(name in api, `missing export: ${name}`);
     }

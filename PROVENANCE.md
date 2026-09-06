@@ -27,6 +27,11 @@ package has zero runtime dependencies (Node built-ins only).
 - Advisory lockfile + O_APPEND multi-process append safety for the ledger.
 - Policy hot-reload with strict validation (`reloadPolicy` / `watchPolicy`).
 - Typed event hooks (`onBlocked` / `onHitl` / `onLocked`).
+- Finance-analysis adapter (`FinanceAnalysisGate`): classification tiers,
+  read-only connector assumptions, required source citations, period/window
+  validation (including unequal day-count / timing-difference checks),
+  assigned HITL reviewers, and immutable sealed drafts + evidence retention
+  on the existing `ChpGate` / `AuditLedger` stack.
 
 ## Compatibility guarantees
 

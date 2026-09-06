@@ -90,6 +90,28 @@ describe("ChpGate evaluate — BLOCKED paths", () => {
     const d = gate.evaluate({ action: "buy", asset: "ETH", notionalUsd: 0 });
     assert.equal(d.state, "LOCKED");
   });
+
+  test("extra claims from a domain adapter can hard-block", () => {
+    const gate = new ChpGate({ policy: basePolicy() });
+    const d = gate.evaluate(
+      { action: "buy", asset: "ETH", notionalUsd: 10 },
+      [{ rule: "source-citation", passed: false, detail: "missing citation" }],
+    );
+    assert.equal(d.state, "BLOCKED");
+    assert.match(d.reason, /source-citation/);
+    const failed = d.provenance.claims.filter((c) => !c.passed).map((c) => c.rule);
+    assert.ok(failed.includes("source-citation"));
+  });
+
+  test("passing extra claims are recorded and do not block", () => {
+    const gate = new ChpGate({ policy: basePolicy() });
+    const d = gate.evaluate(
+      { action: "buy", asset: "ETH", notionalUsd: 10 },
+      [{ rule: "source-citation", passed: true, detail: "cited" }],
+    );
+    assert.equal(d.state, "LOCKED");
+    assert.ok(d.provenance.claims.some((c) => c.rule === "source-citation" && c.passed));
+  });
 });
 
 describe("ChpGate — HITL flow", () => {

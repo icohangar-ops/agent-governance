@@ -49,3 +49,29 @@ export {
   type AuditRecordInput,
   type VerifyResult,
 } from "./ledger.js";
+
+// Finance-analysis adapter: classification, citations, period checks, HITL drafts.
+export {
+  FinanceAnalysisGate,
+  defaultFinanceAnalysisPolicy,
+  syntheticXeroPnlExport,
+  syntheticXeroCommentaryDraft,
+  hashSourceReport,
+  hashDraft,
+  inferReportAsset,
+  isWriteTool,
+  CLASSIFICATION_RANK,
+  WRITE_TOOLS,
+  READ_TOOLS,
+  FINANCE_ALLOWED_ACTIONS,
+  type DataClassification,
+  type AccountingPeriod,
+  type SourceLine,
+  type SourceReport,
+  type CitedFigure,
+  type CommentaryDraft,
+  type FinanceAnalysisRequest,
+  type FinanceAnalysisGateOptions,
+  type SealedDraft,
+  type RetainedEvidence,
+} from "./finance-analysis.js";
