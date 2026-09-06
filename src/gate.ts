@@ -226,8 +226,12 @@ export class ChpGate {
    *   - any hard violation                => BLOCKED  (allowed=false)
    *   - notional >= hitl_threshold        => HITL_REQUIRED (allowed=false, requiresHuman)
    *   - otherwise                         => PROVISIONAL -> LOCKED (allowed=true)
+   *
+   * Domain adapters (e.g. finance-analysis) may pass extra claims that are
+   * folded into the same provenance + hard-block pipeline — they do not
+   * bypass HITL, the ledger, or the daily cap.
    */
-  evaluate(proposed: ProposedAction): ChpDecision {
+  evaluate(proposed: ProposedAction, extraClaims: readonly Claim[] = []): ChpDecision {
     const claims: Claim[] = [];
     const add = (rule: string, passed: boolean, detail: string): void => {
       claims.push({ rule, passed, detail });
@@ -270,9 +274,15 @@ export class ChpGate {
     // ── Adversarial / sanity checks ──────────────────────────
     const sane = this.adversarialCheck(proposed, add);
 
+    let extraOk = true;
+    for (const claim of extraClaims) {
+      claims.push(claim);
+      if (!claim.passed) extraOk = false;
+    }
+
     const hardOk =
       actionAllowed && assetAllowed && assetNotBlocked && venueAllowed &&
-      underAssetCap && underMax && underDaily && sane;
+      underAssetCap && underMax && underDaily && sane && extraOk;
 
     if (!hardOk) {
       const failed = claims.filter((c) => !c.passed).map((c) => c.rule);

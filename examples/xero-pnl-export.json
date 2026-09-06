@@ -1,0 +1,19 @@
+{
+  "reportId": "xero-pnl-northwind-2026-03",
+  "connector": "xero-export",
+  "connectorMode": "read-only",
+  "reportName": "Profit and Loss",
+  "organisation": "Northwind Trading Co. (synthetic — not a real entity)",
+  "exportedAt": "2026-04-01T08:00:00Z",
+  "period": { "start": "2026-03-01", "end": "2026-03-31" },
+  "comparisonPeriod": { "start": "2026-02-01", "end": "2026-02-28" },
+  "classification": "confidential",
+  "restrictedFields": [],
+  "lines": [
+    { "lineId": "l-200", "accountCode": "200", "accountName": "Sales", "current": 125000, "prior": 110000 },
+    { "lineId": "l-310", "accountCode": "310", "accountName": "Cost of Sales", "current": 48000, "prior": 44000 },
+    { "lineId": "l-gp", "accountCode": "GP", "accountName": "Gross Profit", "current": 77000, "prior": 66000 },
+    { "lineId": "l-429", "accountCode": "429", "accountName": "Operating Expenses", "current": 31000, "prior": 29000 },
+    { "lineId": "l-np", "accountCode": "NP", "accountName": "Net Profit", "current": 46000, "prior": 37000 }
+  ]
+}

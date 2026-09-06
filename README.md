@@ -13,6 +13,9 @@ an auditor, a counterparty, or yourself exactly what the agent did and why.
   caps, low-confidence signals, and unauditable decisions never execute.
 - **Restart- and multi-process-safe.** Daily caps persist across restarts;
   ledger appends are lockfile-serialized across processes.
+- **Finance-analysis adapter.** Variance commentary over exported reports
+  (Xero-style) is analysis-only: classification tiers, required citations,
+  period-window checks, assigned HITL reviewers, and immutable signed drafts.
 
 UiPath handoffs can be normalized into governed action envelopes before a capital-moving decision is allowed through the gate.
 
@@ -117,7 +120,7 @@ Schema: `maxNotionalUsd`, `dailyNotionalCapUsd`, `hitlThresholdUsd`,
 | Member | Description |
 | --- | --- |
 | `new ChpGate({ policy?, policyPath?, ledger?, actor?, statePath?, allowZeroNotional?, hooks?, clock? })` | Construct with a validated policy object or a YAML path. |
-| `evaluate(action)` | Run policy + adversarial checks. Returns `ChpDecision` (`allowed`, `requiresHuman`, `state`, `reason`, `provenance`). |
+| `evaluate(action, extraClaims?)` | Run policy + adversarial checks. Optional `extraClaims` from a domain adapter (e.g. finance-analysis) fold into the same provenance and hard-block pipeline. Returns `ChpDecision` (`allowed`, `requiresHuman`, `state`, `reason`, `provenance`). |
 | `approveHuman(decisionId, approver)` | Promote a pending HITL decision to LOCKED (hard caps re-checked at approval time). |
 | `getPendingHitl()` | Pending HITL actions keyed by decisionId. |
 | `getDecisions()` | In-memory append-only provenance records. |
@@ -131,6 +134,29 @@ per-asset cap, max notional, projected daily cap, sane-notional,
 min-confidence, max-leverage, price band. Every check is recorded as a
 pass/fail claim in the decision's provenance.
 
+### Finance analysis (`FinanceAnalysisGate`)
+
+Analysis-only adapter over `ChpGate` + `AuditLedger`. The policy allows
+`analyze` / `comment` only (notional 0, HITL threshold 0). Extra claims —
+classification ingest, read-only connector, source citation, period window,
+retained evidence, signed draft — run through the same CHP pipeline.
+
+| Member | Description |
+| --- | --- |
+| `defaultFinanceAnalysisPolicy()` | Analysis-only `Policy` (zero notional, HITL on every draft). |
+| `syntheticXeroPnlExport()` | Synthetic Xero-style P&L (March 2026 vs February 2026). |
+| `retainEvidence(report)` | Append the source report hash to the ledger. |
+| `sealDraft(draft)` | Append an immutable draft record; later edits fail `signed-draft`. |
+| `evaluate(request)` | Finance claims + CHP evaluate. Happy path → `HITL_REQUIRED`. |
+| `assignReviewer(decisionId, reviewer)` | Bind a pending HITL decision to a named reviewer. |
+| `approveCommentary(decisionId, approver)` | Promote to `LOCKED`; approver must be the assigned reviewer. |
+| `mutateLedger()` / `invokeConnectorWrite(tool)` | Always throw — write tools are denied. |
+
+Classification tiers (higher = more sensitive): `public` < `internal` <
+`confidential` < `restricted`. Restricted fields (bank accounts, payroll PII,
+tax IDs) never enter the analysis context. Default max ingest is
+`confidential`.
+
 ### Ledger (`AuditLedger`)
 
 | Export | Description |
@@ -139,6 +165,86 @@ pass/fail claim in the decision's provenance.
 | `append(record)` | Append one record chained to the previous signature; returns the new signature. |
 | `verify()` / `verifyLedger(path, key?)` | Re-derive every signature in-chain; reports the first tampered line index. |
 | `canonicalJson(value)` | Stable sorted-key JSON used as the signing payload. |
+
+## Cookbook: Xero-export variance commentary
+
+Finance teams export a P&L (or similar) from Xero and ask a model for
+variance commentary. The model must not invent figures, mis-state the
+reporting window, or treat a 31-day March vs 28-day February lift as a
+pure run-rate improvement. The connector is **read-only**: the agent
+never posts journals or rewrites the audit ledger.
+
+Synthetic fixture (also at [`examples/xero-pnl-export.json`](./examples/xero-pnl-export.json);
+numbers are invented, not a real entity):
+
+```json
+{
+  "reportId": "xero-pnl-northwind-2026-03",
+  "connector": "xero-export",
+  "connectorMode": "read-only",
+  "reportName": "Profit and Loss",
+  "period": { "start": "2026-03-01", "end": "2026-03-31" },
+  "comparisonPeriod": { "start": "2026-02-01", "end": "2026-02-28" },
+  "classification": "confidential",
+  "restrictedFields": [],
+  "lines": [
+    { "lineId": "l-np", "accountCode": "NP", "accountName": "Net Profit", "current": 46000, "prior": 37000 }
+  ]
+}
+```
+
+```ts
+import {
+  AuditLedger,
+  FinanceAnalysisGate,
+  syntheticXeroPnlExport,
+  syntheticXeroCommentaryDraft,
+} from "@cubiczan/agent-governance";
+
+const ledger = new AuditLedger({ path: "var/finance-audit.jsonl" });
+const finance = new FinanceAnalysisGate({
+  ledger,
+  reviewerPool: ["controller@example.com"],
+});
+
+const report = syntheticXeroPnlExport();
+const draft = syntheticXeroCommentaryDraft();
+// draft.periodLengthNoted === true  → 31-vs-28-day comparison is acknowledged
+
+const evidence = finance.retainEvidence(report); // source report stays on the ledger
+const sealed = finance.sealDraft(draft);         // immutable; edits need a new seal
+
+const decision = finance.evaluate({
+  action: "analyze",           // "post-journal" / "mutate-ledger" → BLOCKED
+  report,
+  draft,
+  connectorTool: "read-report",
+  draftSig: sealed.sig,        // omit this → unsigned draft rejected
+  evidenceSig: evidence.sig,
+});
+
+if (decision.requiresHuman) {
+  finance.assignReviewer(decision.provenance.decisionId, "controller@example.com");
+  finance.approveCommentary(decision.provenance.decisionId, "controller@example.com");
+}
+
+ledger.verify(); // { ok: true, count: n }
+```
+
+The matching analysis-only policy lives at
+[`examples/finance-analysis-policy.yaml`](./examples/finance-analysis-policy.yaml)
+(`allowed_actions: analyze, comment`; all notionals 0).
+
+Negative paths the gate records as `BLOCKED` claims:
+
+| Failure | Claim |
+| --- | --- |
+| Figure without `sourceReportId` / `sourceLineId`, or value ≠ source line | `source-citation` |
+| Draft window ≠ report window, or un-noted unequal day-counts | `period-window` |
+| `post-journal`, `mutate-ledger`, or any write tool | `connector-read-only` + `allowed-action` |
+| `sealDraft` skipped, or draft edited after sealing | `signed-draft` |
+| Restricted fields still on the export | `classification-ingest` |
+| Source report never passed to `retainEvidence` | `evidence-retained` |
 
 ## Cross-language golden-vector compatibility
 
