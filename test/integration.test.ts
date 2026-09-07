@@ -111,6 +111,15 @@ describe("gate -> signed ledger integration", () => {
       "syntheticXeroCommentaryDraft",
       "hashSourceReport",
       "isWriteTool",
+      "DomainEventLedgerHandler",
+      "Order",
+      "defaultDomainEventOrderPolicy",
+      "mapOrderEventToAction",
+      "syntheticOpenedOrder",
+      "domainEventFromRecord",
+      "domainEventsFromRecords",
+      "isDomainLedgerEvent",
+      "DOMAIN_LEDGER_EVENT_PREFIX",
     ]) {
       assert.ok(name in api, `missing export: ${name}`);
     }

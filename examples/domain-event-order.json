@@ -1,0 +1,39 @@
+{
+  "note": "Synthetic Order aggregate — not a real venue fill. The entity raises facts with no actor/UserId; the application handler attaches the actor and appends to the HMAC JSONL ledger.",
+  "entityRaised": {
+    "eventId": "evt-ord-northwind-eth-001-opened",
+    "eventType": "order.opened",
+    "occurredAt": "2026-09-07T00:00:00.000Z",
+    "aggregateType": "Order",
+    "aggregateId": "ord-northwind-eth-001",
+    "payload": {
+      "asset": "ETH",
+      "qty": 1.5,
+      "notionalUsd": 750,
+      "venue": "hyperliquid"
+    },
+    "sources": ["aggregate:Order:ord-northwind-eth-001"]
+  },
+  "ledgerLineAfterHandler": {
+    "ts": "2026-09-07T00:00:00.000Z",
+    "event": "domain.order.opened",
+    "actor": "sam@cubiczan.com",
+    "inputs": {
+      "eventId": "evt-ord-northwind-eth-001-opened",
+      "eventType": "order.opened",
+      "occurredAt": "2026-09-07T00:00:00.000Z",
+      "aggregateType": "Order",
+      "aggregateId": "ord-northwind-eth-001",
+      "payload": {
+        "asset": "ETH",
+        "qty": 1.5,
+        "notionalUsd": 750,
+        "venue": "hyperliquid"
+      }
+    },
+    "sources": ["aggregate:Order:ord-northwind-eth-001"],
+    "rationale": "order.opened on Order ord-northwind-eth-001",
+    "prev_sig": "",
+    "sig": "<HMAC-SHA256 over canonical {ts,event,actor,inputs,sources,rationale,prev_sig}>"
+  }
+}

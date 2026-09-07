@@ -32,6 +32,12 @@ package has zero runtime dependencies (Node built-ins only).
   validation (including unequal day-count / timing-difference checks),
   assigned HITL reviewers, and immutable sealed drafts + evidence retention
   on the existing `ChpGate` / `AuditLedger` stack.
+- Domain-event → HMAC ledger adapter (`DomainEventLedgerHandler`, cookbook
+  `Order` aggregate): entities raise facts with no `UserId`; the
+  application handler attaches the actor and appends `domain.*` records
+  to the existing `AuditLedger`. Capital-moving events map onto `ChpGate`
+  / HITL. Key rotation (`rotateKey` + verify key-ring) keeps the same
+  HMAC-SHA256 / `prev_sig` scheme.
 
 ## Compatibility guarantees
 

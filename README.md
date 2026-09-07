@@ -16,6 +16,10 @@ an auditor, a counterparty, or yourself exactly what the agent did and why.
 - **Finance-analysis adapter.** Variance commentary over exported reports
   (Xero-style) is analysis-only: classification tiers, required citations,
   period-window checks, assigned HITL reviewers, and immutable signed drafts.
+- **Domain-event cookbook.** Entities raise facts with no `UserId`; an
+  application handler attaches the actor and appends to the same HMAC
+  JSONL ledger (`prev_sig` chain). Capital-moving events still go through
+  `ChpGate` / HITL.
 
 UiPath handoffs can be normalized into governed action envelopes before a capital-moving decision is allowed through the gate.
 
@@ -161,10 +165,31 @@ tax IDs) never enter the analysis context. Default max ingest is
 
 | Export | Description |
 | --- | --- |
-| `new AuditLedger({ path, key?, lock?, lockTimeoutMs?, lockRetryMs?, lockStaleMs? })` | Signed append-only JSONL ledger. Key defaults to `$AUDIT_LEDGER_KEY`, then a documented dev-only default. |
+| `new AuditLedger({ path, key?, historicKeys?, lock?, lockTimeoutMs?, lockRetryMs?, lockStaleMs? })` | Signed append-only JSONL ledger. Key defaults to `$AUDIT_LEDGER_KEY`, then a documented dev-only default. `historicKeys` are prior secrets accepted by `verify()` after rotation. |
 | `append(record)` | Append one record chained to the previous signature; returns the new signature. |
-| `verify()` / `verifyLedger(path, key?)` | Re-derive every signature in-chain; reports the first tampered line index. |
+| `rotateKey(nextKey, actor?)` | Append `ledger.key.rotated` with the current key, then sign subsequent lines with `nextKey`. Does not change the HMAC payload or `prev_sig` scheme. |
+| `verify()` / `verifyLedger(path, key?)` | Re-derive every signature in-chain; reports the first tampered line index. `key` may be a string or a rotation key-ring (`string[]`). |
 | `canonicalJson(value)` | Stable sorted-key JSON used as the signing payload. |
+
+### Domain events (`DomainEventLedgerHandler`, `Order`)
+
+Application-layer adapter over `ChpGate` + `AuditLedger`. Aggregates raise
+facts with **no actor / `UserId`**. The handler attaches the current user
+(or service) and appends a `domain.<eventType>` line to the same HMAC
+JSONL ledger. Capital-moving facts optionally map onto `ChpGate.evaluate`
+so HITL and policy still apply.
+
+| Member | Description |
+| --- | --- |
+| `new DomainEventLedgerHandler({ ledger, actor, gate?, mapToAction? })` | Actor is required; `mapToAction` without a gate is fail-closed. |
+| `dispatch(event, actorOverride?)` | Attach actor, append, optionally evaluate CHP. Rejects events that leaked `actor` / `userId` / `UserId`. |
+| `dispatchAll(events, actorOverride?)` | Drain-and-dispatch helper for `order.pullDomainEvents()`. |
+| `approveHuman(decisionId, approver)` | Promote a HITL-gated capital-moving event. |
+| `Order.open / cancel / fill` | Cookbook aggregate — no `UserId` on the entity. |
+| `Order.fromEvents(events)` | Replay entity state from verified `domain.*` lines. |
+| `defaultDomainEventOrderPolicy()` | Cookbook policy (`buy`/`sell`, HITL at $1000). |
+| `mapOrderEventToAction(event)` | `order.opened` → `buy`; cancel / fill skip the gate. |
+| `domainEventsFromRecords(records)` | Extract domain facts from a verified ledger (skips CHP / rotation lines). |
 
 ## Cookbook: Xero-export variance commentary
 
@@ -234,6 +259,104 @@ ledger.verify(); // { ok: true, count: n }
 The matching analysis-only policy lives at
 [`examples/finance-analysis-policy.yaml`](./examples/finance-analysis-policy.yaml)
 (`allowed_actions: analyze, comment`; all notionals 0).
+
+## Cookbook: Domain events → HMAC ledger
+
+The EF / DDD instinct is to stamp `UserId` (or `CreatedBy`) on every
+entity so the database *is* the audit trail. That pollutes the aggregate,
+couples persistence to identity, and still is not tamper-evident.
+
+Use **domain events** when an aggregate owns the facts and must stay
+persistence-pure. The entity raises `order.opened` / `order.cancelled`
+with no actor. After the application knows who is calling (HTTP user,
+agent id, service identity), `DomainEventLedgerHandler` attaches that
+actor and appends to the existing HMAC JSONL ledger — same
+`canonicalJson` + HMAC-SHA256 + `prev_sig` chain as CHP and
+finance-analysis. Do not invent a second hash scheme.
+
+Use **direct ledger writes** (`ledger.append`, or the writes
+`ChpGate` / `FinanceAnalysisGate` already make) when you are already in
+the application / governance layer and there is no entity raising an
+event. Wrapping those decisions in a fake domain event is theater.
+
+A capital-moving domain event may produce *two* chained lines on
+purpose: `domain.order.opened` (the fact + actor) then `chp.locked` /
+`chp.hitl_required` (the governance decision). Replay reads only
+`domain.*` lines; `verify()` covers the whole file.
+
+Synthetic fixture (also at
+[`examples/domain-event-order.json`](./examples/domain-event-order.json);
+not a real venue fill):
+
+```json
+{
+  "eventId": "evt-ord-northwind-eth-001-opened",
+  "eventType": "order.opened",
+  "occurredAt": "2026-09-07T00:00:00.000Z",
+  "aggregateType": "Order",
+  "aggregateId": "ord-northwind-eth-001",
+  "payload": { "asset": "ETH", "qty": 1.5, "notionalUsd": 750, "venue": "hyperliquid" }
+}
+```
+
+```ts
+import {
+  AuditLedger,
+  ChpGate,
+  DomainEventLedgerHandler,
+  Order,
+  defaultDomainEventOrderPolicy,
+  domainEventsFromRecords,
+  mapOrderEventToAction,
+  verifyLedger,
+} from "@cubiczan/agent-governance";
+
+const ledger = new AuditLedger({ path: "var/audit.jsonl", key: process.env.AUDIT_LEDGER_KEY });
+const gate = new ChpGate({
+  policy: defaultDomainEventOrderPolicy(),
+  ledger,                 // same sink the handler writes to
+  actor: "chp-gate",
+});
+const handler = new DomainEventLedgerHandler({
+  ledger,
+  actor: "sam@cubiczan.com", // attached here — never stored on Order
+  gate,
+  mapToAction: mapOrderEventToAction,
+});
+
+const order = Order.open({
+  orderId: "ord-northwind-eth-001",
+  asset: "ETH",
+  qty: 1.5,
+  notionalUsd: 750,       // under the $1000 HITL threshold → LOCKED
+  venue: "hyperliquid",
+});
+// order has no UserId; pullDomainEvents() returns facts only
+
+const [opened] = handler.dispatchAll(order.pullDomainEvents());
+if (opened.decision?.requiresHuman) {
+  handler.approveHuman(opened.decision.provenance.decisionId, "risk@example.com");
+}
+
+ledger.verify(); // { ok: true, count: n } — includes domain.* + chp.*
+
+// Replay: rehydrate the aggregate from verified domain lines (skip CHP).
+const events = domainEventsFromRecords(/* read JSONL records */);
+const replayed = Order.fromEvents(events);
+```
+
+The matching policy lives at
+[`examples/domain-event-order-policy.yaml`](./examples/domain-event-order-policy.yaml).
+
+Key rotation uses the same chain. `rotateKey` appends
+`ledger.key.rotated` with the old secret; later lines use the new one.
+`verifyLedger(path, [oldKey, newKey])` (or `historicKeys` on a
+reconstructed `AuditLedger`) walks the file. A single key will fail
+across the cutover — that is the point.
+
+Multi-writer: cooperating processes share the ledger via the existing
+`<path>.lock` + tail re-read. Do not bypass the lock; see
+[Multi-process ledger safety](#multi-process-ledger-safety--limits).
 
 Negative paths the gate records as `BLOCKED` claims:
 

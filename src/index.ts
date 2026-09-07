@@ -48,6 +48,7 @@ export {
   type AuditRecord,
   type AuditRecordInput,
   type VerifyResult,
+  type LedgerVerifyKey,
 } from "./ledger.js";
 
 // Finance-analysis adapter: classification, citations, period checks, HITL drafts.
@@ -75,3 +76,21 @@ export {
   type SealedDraft,
   type RetainedEvidence,
 } from "./finance-analysis.js";
+
+// Domain-event → HMAC ledger: entities raise facts; the handler attaches actor.
+export {
+  DomainEventLedgerHandler,
+  Order,
+  defaultDomainEventOrderPolicy,
+  mapOrderEventToAction,
+  syntheticOpenedOrder,
+  domainEventFromRecord,
+  domainEventsFromRecords,
+  isDomainLedgerEvent,
+  DOMAIN_LEDGER_EVENT_PREFIX,
+  type DomainEvent,
+  type DomainEventDispatch,
+  type DomainEventHandlerOptions,
+  type OrderState,
+  type OpenOrderInput,
+} from "./domain-events.js";
