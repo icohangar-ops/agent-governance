@@ -1,0 +1,17 @@
+# CHP policy for the domain-event → HMAC ledger cookbook.
+# Capital-moving `order.opened` facts map to `buy` and go through ChpGate.
+# Cancel / fill are domain facts only (direct ledger append, no gate).
+version: "domain-event-order-1.0"
+max_notional_usd: 5000.0
+daily_notional_cap_usd: 20000.0
+hitl_threshold_usd: 1000.0
+allowed_actions:
+  - buy
+  - sell
+per_asset_limits:
+  ETH: 5000.0
+  SOL: 3000.0
+min_confidence: 0.5
+allowed_venues:
+  - hyperliquid
+  - polymarket

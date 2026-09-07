@@ -171,6 +171,46 @@ describe("AuditLedger key resolution", () => {
   });
 });
 
+describe("AuditLedger key rotation", () => {
+  test("rotateKey keeps the prev_sig chain and verifies on the key ring", () => {
+    const oldKey = "rotate-old";
+    const newKey = "rotate-new";
+    const ledger = new AuditLedger({ path, key: oldKey });
+    ledger.append({ event: "e0", actor: "a", ts: "2026-01-01T00:00:00Z" });
+    const rot = ledger.rotateKey(newKey, "ops");
+    ledger.append({ event: "e1", actor: "a", ts: "2026-01-01T00:00:01Z" });
+
+    const recs = readRecords(path);
+    assert.equal(recs[1]!.event, "ledger.key.rotated");
+    assert.equal(recs[1]!.sig, rot);
+    assert.equal(recs[1]!.prev_sig, recs[0]!.sig);
+    assert.equal(recs[2]!.prev_sig, recs[1]!.sig);
+
+    assert.equal(ledger.verify().ok, true);
+    assert.equal(verifyLedger(path, oldKey).ok, false);
+    assert.equal(verifyLedger(path, newKey).ok, false);
+    const ring = verifyLedger(path, [oldKey, newKey]);
+    assert.equal(ring.ok, true);
+    if (ring.ok) assert.equal(ring.count, 3);
+
+    const reconstructed = new AuditLedger({
+      path,
+      key: newKey,
+      historicKeys: [oldKey],
+    });
+    assert.equal(reconstructed.verify().ok, true);
+    reconstructed.append({ event: "e2", actor: "a" });
+    assert.equal(verifyLedger(path, [newKey, oldKey]).ok, true);
+  });
+
+  test("rotateKey rejects an empty or identical successor", () => {
+    const ledger = new AuditLedger({ path, key: KEY });
+    ledger.append({ event: "e0", actor: "a" });
+    assert.throws(() => ledger.rotateKey(""), /non-empty/);
+    assert.throws(() => ledger.rotateKey(KEY), /must differ/);
+  });
+});
+
 describe("AuditLedger multi-process lockfile", () => {
   test("a held (fresh) lock makes append fail with LedgerLockError", () => {
     const ledger = new AuditLedger({

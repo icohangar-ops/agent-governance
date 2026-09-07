@@ -113,6 +113,13 @@ export class LedgerLockError extends Error {
   }
 }
 
+/**
+ * Key material for {@link verifyLedger}. A string is the current key; an
+ * array is a key ring (any entry may have signed a given line after
+ * {@link AuditLedger.rotateKey}). The signing scheme itself is unchanged.
+ */
+export type LedgerVerifyKey = string | readonly string[];
+
 export interface AuditLedgerOptions {
   /** Path to the JSONL ledger file. */
   readonly path: string;
@@ -121,6 +128,12 @@ export interface AuditLedgerOptions {
    * {@link DEFAULT_AUDIT_LEDGER_KEY} (test-only).
    */
   readonly key?: string;
+  /**
+   * Prior HMAC keys still accepted by {@link AuditLedger.verify} after
+   * rotation (or when reconstructing a ledger that was rotated on disk).
+   * The current signing key remains {@link AuditLedgerOptions.key}.
+   */
+  readonly historicKeys?: readonly string[];
   /**
    * Serialize appends through an advisory `<path>.lock` file so multiple
    * cooperating processes can share one ledger. Default true.
@@ -153,6 +166,14 @@ function sortKeys(value: unknown): unknown {
 
 function resolveKey(key?: string): string {
   return key ?? process.env[AUDIT_LEDGER_KEY_ENV] ?? DEFAULT_AUDIT_LEDGER_KEY;
+}
+
+/** Expand a single key or a rotation key-ring into the list verify will try. */
+function resolveKeyRing(key?: LedgerVerifyKey): string[] {
+  if (key !== undefined && typeof key !== "string") {
+    return key.length > 0 ? [...key] : [resolveKey(undefined)];
+  }
+  return [resolveKey(key)];
 }
 
 /**
@@ -209,7 +230,10 @@ function sleepSync(ms: number): void {
  */
 export class AuditLedger {
   private readonly path: string;
-  private readonly key: string;
+  /** Current HMAC key used by {@link AuditLedger.append}. */
+  private key: string;
+  /** Keys that signed earlier segments of this file (post-rotation). */
+  private readonly historicKeys: string[];
   private readonly lock: boolean;
   private readonly lockTimeoutMs: number;
   private readonly lockRetryMs: number;
@@ -220,6 +244,7 @@ export class AuditLedger {
   constructor(options: AuditLedgerOptions) {
     this.path = options.path;
     this.key = resolveKey(options.key);
+    this.historicKeys = options.historicKeys ? [...options.historicKeys] : [];
     this.lock = options.lock ?? true;
     this.lockTimeoutMs = options.lockTimeoutMs ?? 2000;
     this.lockRetryMs = options.lockRetryMs ?? 25;
@@ -256,10 +281,39 @@ export class AuditLedger {
 
   /**
    * Re-walk the whole ledger and recompute every signature in-chain. Verifies
-   * with the same key used to construct this instance.
+   * with the current key plus any {@link AuditLedgerOptions.historicKeys}
+   * (including keys retired by {@link rotateKey}). The HMAC payload and
+   * `prev_sig` chain are the same scheme CHP / finance-analysis already use.
    */
   verify(): VerifyResult {
-    return verifyLedger(this.path, this.key);
+    return verifyLedger(this.path, [this.key, ...this.historicKeys]);
+  }
+
+  /**
+   * Append a `ledger.key.rotated` record signed with the current key, then
+   * switch subsequent appends to `nextKey`. The chain is not reset — the
+   * first post-rotation line still sets `prev_sig` to this record's `sig`.
+   *
+   * After rotation, {@link verify} needs the key ring (kept on this
+   * instance automatically; pass `historicKeys` when reconstructing).
+   */
+  rotateKey(nextKey: string, actor = "ledger-ops"): string {
+    if (nextKey === "") {
+      throw new Error("rotateKey: next key must be non-empty");
+    }
+    if (nextKey === this.key) {
+      throw new Error("rotateKey: next key must differ from the current key");
+    }
+    const sig = this.append({
+      event: "ledger.key.rotated",
+      actor,
+      inputs: { rotated: true },
+      sources: ["ledger"],
+      rationale: "HMAC signing key rotated; subsequent records use the successor key",
+    });
+    this.historicKeys.push(this.key);
+    this.key = nextKey;
+    return sig;
   }
 
   // ── Internals ──────────────────────────────────────────────
@@ -328,9 +382,13 @@ export class AuditLedger {
  * Verify a ledger file without constructing an {@link AuditLedger}. Re-derives
  * each signature from the stored content + the running `prev_sig` and returns
  * the index of the first line whose signature or chain link is broken.
+ *
+ * `key` may be a single secret or a rotation key-ring. Each line is accepted
+ * if *any* ring entry reproduces its HMAC — the canonical payload and
+ * `prev_sig` chain are unchanged (same golden vector as a single key).
  */
-export function verifyLedger(path: string, key?: string): VerifyResult {
-  const resolvedKey = resolveKey(key);
+export function verifyLedger(path: string, key?: LedgerVerifyKey): VerifyResult {
+  const keys = resolveKeyRing(key);
   const raw = existsSync(path) ? readFileSync(path, "utf-8") : "";
   const records = parseLines(raw);
 
@@ -345,8 +403,8 @@ export function verifyLedger(path: string, key?: string): VerifyResult {
       };
     }
     const { sig, ...unsigned } = rec;
-    const expected = sign(resolvedKey, unsigned);
-    if (expected !== sig) {
+    const matched = keys.some((k) => sign(k, unsigned) === sig);
+    if (!matched) {
       return {
         ok: false,
         tamperedIndex: i,
