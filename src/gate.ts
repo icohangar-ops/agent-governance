@@ -40,6 +40,13 @@ import {
 } from "./policy.js";
 import type { AuditRecordInput } from "./ledger.js";
 
+function requireIdentity(value: string | undefined, field: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${field} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
 /** Lifecycle states a proposed action moves through. */
 export type ChpState =
   | "EXPLORING" // received, not yet checked
@@ -177,7 +184,7 @@ export class ChpGate {
       this.policy = loadPolicy(this.policyPath);
     }
     if (options.ledger !== undefined) this.ledger = options.ledger;
-    this.actor = options.actor ?? "chp-gate";
+    this.actor = requireIdentity(options.actor ?? "chp-gate", "actor");
     if (options.statePath !== undefined) this.statePath = options.statePath;
     this.allowZeroNotional = options.allowZeroNotional ?? false;
     this.clock = options.clock ?? Date.now;
@@ -318,6 +325,7 @@ export class ChpGate {
    * them is BLOCKED. Throws on an unknown / already-resolved decisionId.
    */
   approveHuman(decisionId: string, approver: string): ChpDecision {
+    const approverIdentity = requireIdentity(approver, "approver");
     const proposed = this.pendingHitl.get(decisionId);
     if (!proposed) {
       throw new Error(`approveHuman: unknown or already-resolved decisionId ${decisionId}`);
@@ -341,10 +349,10 @@ export class ChpGate {
     return this.finalize(
       proposed,
       "LOCKED",
-      [{ rule: "human-approval", passed: true, detail: `approved by ${approver}` }],
+      [{ rule: "human-approval", passed: true, detail: `approved by ${approverIdentity}` }],
       true,
       false,
-      `human-approved by ${approver}`,
+      `human-approved by ${approverIdentity}`,
     );
   }
 

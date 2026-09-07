@@ -123,9 +123,9 @@ Schema: `maxNotionalUsd`, `dailyNotionalCapUsd`, `hitlThresholdUsd`,
 
 | Member | Description |
 | --- | --- |
-| `new ChpGate({ policy?, policyPath?, ledger?, actor?, statePath?, allowZeroNotional?, hooks?, clock? })` | Construct with a validated policy object or a YAML path. |
+| `new ChpGate({ policy?, policyPath?, ledger?, actor?, statePath?, allowZeroNotional?, hooks?, clock? })` | Construct with a validated policy object or a YAML path. `actor` must be a non-empty identity string. |
 | `evaluate(action, extraClaims?)` | Run policy + adversarial checks. Optional `extraClaims` from a domain adapter (e.g. finance-analysis) fold into the same provenance and hard-block pipeline. Returns `ChpDecision` (`allowed`, `requiresHuman`, `state`, `reason`, `provenance`). |
-| `approveHuman(decisionId, approver)` | Promote a pending HITL decision to LOCKED (hard caps re-checked at approval time). |
+| `approveHuman(decisionId, approver)` | Promote a pending HITL decision to LOCKED (hard caps re-checked at approval time). `approver` must be a non-empty identity string. |
 | `getPendingHitl()` | Pending HITL actions keyed by decisionId. |
 | `getDecisions()` | In-memory append-only provenance records. |
 | `getDailyNotionalUsd()` | Notional locked in the current rolling day. |

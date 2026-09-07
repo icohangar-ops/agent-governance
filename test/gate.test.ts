@@ -132,6 +132,12 @@ describe("ChpGate — HITL flow", () => {
     assert.equal(gate.getPendingHitl().size, 0);
   });
 
+  test("rejects blank approver identities", () => {
+    const gate = new ChpGate({ policy: basePolicy() });
+    const d = gate.evaluate({ action: "buy", asset: "ETH", notionalUsd: 600 });
+    assert.throws(() => gate.approveHuman(d.provenance.decisionId, "   "), /approver must be a non-empty string/);
+  });
+
   test("approveHuman throws on an unknown or already-resolved id", () => {
     const gate = new ChpGate({ policy: basePolicy() });
     const d = gate.evaluate({ action: "buy", asset: "ETH", notionalUsd: 600 });
@@ -237,6 +243,12 @@ describe("ChpGate — typed event hooks", () => {
     });
     const d = gate.evaluate({ action: "buy", asset: "ETH", notionalUsd: 100 });
     assert.equal(d.state, "LOCKED");
+  });
+});
+
+describe("ChpGate — identity invariants", () => {
+  test("rejects a blank actor identity at construction time", () => {
+    assert.throws(() => new ChpGate({ policy: basePolicy(), actor: "  " }), /actor must be a non-empty string/);
   });
 });
 
