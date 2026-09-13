@@ -19,6 +19,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { confinePath } from "./safe-path.js";
 
 /** Inclusive band applied to a proposed price / odds value. */
 export interface PriceBand {
@@ -185,28 +186,29 @@ export function loadPolicy(
   options: LoadPolicyOptions = {},
 ): Policy {
   const warn = options.warn ?? ((m: string) => console.warn(m));
+  const safePath = confinePath(policyPath);
 
-  if (!existsSync(policyPath)) {
-    if (options.strict) throw new Error(`[agent-governance] policy file not found: ${policyPath}`);
-    warn(`[agent-governance] policy file not found at ${policyPath} — using conservative default policy`);
+  if (!existsSync(safePath)) {
+    if (options.strict) throw new Error(`[agent-governance] policy file not found: ${safePath}`);
+    warn(`[agent-governance] policy file not found at ${safePath} — using conservative default policy`);
     return defaultPolicy();
   }
 
   let coerced: Policy;
   try {
-    const raw = readFileSync(policyPath, "utf8");
+    const raw = readFileSync(safePath, "utf8");
     coerced = coercePolicy(parseFlatYaml(raw));
   } catch (err) {
     if (options.strict) throw err;
     const msg = err instanceof Error ? err.message : String(err);
-    warn(`[agent-governance] failed to parse policy ${policyPath} (${msg}) — using default policy`);
+    warn(`[agent-governance] failed to parse policy ${safePath} (${msg}) — using default policy`);
     return defaultPolicy();
   }
 
   const errors = validatePolicy(coerced);
   if (errors.length > 0) {
     if (options.strict) throw new PolicyValidationError(errors);
-    warn(`[agent-governance] policy ${policyPath} failed validation (${errors.join("; ")}) — using default policy`);
+    warn(`[agent-governance] policy ${safePath} failed validation (${errors.join("; ")}) — using default policy`);
     return defaultPolicy();
   }
   return coerced;

@@ -51,6 +51,8 @@ export {
   type LedgerVerifyKey,
 } from "./ledger.js";
 
+export { confinePath, PathEscapeError } from "./safe-path.js";
+
 // Finance-analysis adapter: classification, citations, period checks, HITL drafts.
 export {
   FinanceAnalysisGate,

@@ -32,6 +32,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { confinePath } from "./safe-path.js";
 import {
   defaultPolicyPath,
   loadPolicy,
@@ -173,7 +174,7 @@ export class ChpGate {
   private watching = false;
 
   constructor(options: ChpGateOptions = {}) {
-    this.policyPath = options.policyPath ?? defaultPolicyPath();
+    this.policyPath = confinePath(options.policyPath ?? defaultPolicyPath());
     if (options.policy) {
       const errors = validatePolicy(options.policy);
       if (errors.length > 0) {
@@ -185,7 +186,7 @@ export class ChpGate {
     }
     if (options.ledger !== undefined) this.ledger = options.ledger;
     this.actor = requireIdentity(options.actor ?? "chp-gate", "actor");
-    if (options.statePath !== undefined) this.statePath = options.statePath;
+    if (options.statePath !== undefined) this.statePath = confinePath(options.statePath);
     this.allowZeroNotional = options.allowZeroNotional ?? false;
     this.clock = options.clock ?? Date.now;
     this.dailyWindowStart = this.clock();
@@ -446,9 +447,11 @@ export class ChpGate {
   }
 
   private loadDailyState(): void {
-    if (!this.statePath || !existsSync(this.statePath)) return;
+    if (!this.statePath) return;
+    const safePath = confinePath(this.statePath);
+    if (!existsSync(safePath)) return;
     try {
-      const parsed = JSON.parse(readFileSync(this.statePath, "utf8")) as Partial<DailyState>;
+      const parsed = JSON.parse(readFileSync(safePath, "utf8")) as Partial<DailyState>;
       if (
         typeof parsed.windowStart === "number" && Number.isFinite(parsed.windowStart) &&
         typeof parsed.notionalUsd === "number" && Number.isFinite(parsed.notionalUsd) && parsed.notionalUsd >= 0

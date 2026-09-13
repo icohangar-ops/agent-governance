@@ -103,6 +103,8 @@ describe("gate -> signed ledger integration", () => {
       "parseFlatYaml",
       "PolicyValidationError",
       "LedgerLockError",
+      "PathEscapeError",
+      "confinePath",
       "DEFAULT_AUDIT_LEDGER_KEY",
       "AUDIT_LEDGER_KEY_ENV",
       "FinanceAnalysisGate",
